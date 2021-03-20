@@ -156,7 +156,7 @@ h06$bmi[h06$bmi<0] <- NA
 h11$bmi <- hse11$bmival
 h11$bmi[h11$bmi<0] <- NA
 
-# treatment of HBP
+# treatment of HBP----
 h03$trtbp <- NA
 h03$trtbp[hse03$bp1==2 | hse03$medcinbp==2] <- 0
 h03$trtbp[hse03$medcinbp==1 & hse03$bp1==1] <- 1
@@ -598,4 +598,143 @@ for (i in c("mobility", "selfcare", "usualact", "pain", "anxiety")) {
   h11[[i]][h11[[i]]<0] <- NA
 }
 
+
+# combine 03, 04, 06 and 11 -----------------------------------------------
+
+h03$year <- "2003"
+h04$year <- "2004"
+h06$year <- "2006"
+h11$year <- "2011"
+
+ctt <- rbind(h03, h04, h06, h11)
+
+# calculate eq5d index----
+
+# a easier funciton
+get_index <- function(MO, SC, UA, PD, AD) {
+  library(eq5d)
+  score <- data.frame(MO=MO, SC=SC, UA=UA, PD=PD, AD=AD)
+  eq5d_index <- eq5d(score, country = "UK", version = "3L", type = "TTO", ignore.incomplete = T)
+  return(eq5d_index)
+}
+
+ctt$eq5d_index <- get_index(MO=ctt$mobility, SC=ctt$selfcare, UA=ctt$usualact, PD=ctt$pain, AD=ctt$anxiety)
+
+# age band----
+
+ctt$age5 <- NA
+ctt$age5[ctt$age>=30 & ctt$age<35] <- 1
+ctt$age5[ctt$age>=35 & ctt$age<40] <- 2
+ctt$age5[ctt$age>=40 & ctt$age<45] <- 3
+ctt$age5[ctt$age>=45 & ctt$age<50] <- 4
+ctt$age5[ctt$age>=50 & ctt$age<55] <- 5
+ctt$age5[ctt$age>=55 & ctt$age<60] <- 6
+ctt$age5[ctt$age>=60 & ctt$age<65] <- 7
+ctt$age5[ctt$age>=65 & ctt$age<70] <- 8
+ctt$age5[ctt$age>=70 & ctt$age<75] <- 9
+ctt$age5[ctt$age>=75 & ctt$age<80] <- 10
+ctt$age5[ctt$age>=80 & ctt$age<85] <- 11
+ctt$age5[ctt$age>=85 & ctt$age<90] <- 12
+ctt$age5[ctt$age>=90] <- 13
+
+ctt$age5 <- as.factor(ctt$age5)
+
+levels(ctt$age5)[1] <- "30-34"
+levels(ctt$age5)[2] <- "35-39"
+levels(ctt$age5)[3] <- "40-44"
+levels(ctt$age5)[4] <- "45-49"
+levels(ctt$age5)[5] <- "50-54"
+levels(ctt$age5)[6] <- "55-59"
+levels(ctt$age5)[7] <- "60-64"
+levels(ctt$age5)[8] <- "65-69"
+levels(ctt$age5)[9] <- "70-74"
+levels(ctt$age5)[10] <- "75-79"
+levels(ctt$age5)[11] <- "80-84"
+levels(ctt$age5)[12] <- "85-89"
+levels(ctt$age5)[13] <- "90+"
+
+# BMI category----
+
+ctt <- ctt %>% mutate(bmi_cat = case_when(bmi<18.5 ~ "<18.5",
+                                          bmi>=18.5 & bmi<25 ~ "18.5-25",
+                                          bmi>=25 & bmi<30 ~ "25-30",
+                                          bmi>=30 & bmi<35 ~ "30-35",
+                                          bmi>=35 & bmi<40 ~ "35-40",
+                                          bmi>=40 ~ "40+"
+                                          ))
+
+ctt$bmi_cat <- as.factor(ctt$bmi_cat)
+ctt$bmi_cat <- relevel(ctt$bmi_cat, ref = "18.5-25")
+
+# ethnicity category
+ctt$ethn <- as.factor(ctt$ethn)
+levels(ctt$ethn)[1] <- "White"
+levels(ctt$ethn)[2] <- "Black"
+levels(ctt$ethn)[3] <- "South Asian"
+levels(ctt$ethn)[4] <- "Chinese/Others"
+
+# IMD category----
+ctt$imd <- as.factor(ctt$imd)
+ctt$imd <- relevel(ctt$imd, ref=3)
+
+# CVD history----
+ctt$cvd_num <- ctt$mi_1_plus + ctt$stroke_1_plus + ctt$angina
+
+ctt <- ctt %>% 
+  mutate(cvd_hist = case_when(cvd_num==0 ~ "None",
+                              cvd_num==1 & angina==1 ~ "Angina ever only",
+                              cvd_num==1 & mi_1_plus==1 ~ "MI 1yr+ only",
+                              cvd_num==1 & stroke_1_plus==1 ~ "stroke 1yr+ only",
+                              cvd_num>1 ~ "Two or more"))
+
+ctt$cvd_hist <- as.factor(ctt$cvd_hist)
+ctt$cvd_hist <- relevel(ctt$cvd_hist, ref = "None")
+
+
+# 
+# fm <- as.formula(paste("eq5d_index ~ age5", "male", "ethn", "edu", "marital", 
+#           "imd", "bmi_cat", "cur_smk", "ex_smk", "trtbp", "dm_0_10", "dm_10_plus",
+#           "cvd_hist", "crv_1_plus","cancer", "mi_0_1", "stroke_0_1", "crv_0_1", sep = "+"))
+# 
+# fit <- lm(fm, ctt)
+
+# code categorical smoke and diabetes for impute----
+ctt <- ctt %>% mutate(smk = case_when(ex_smk==1 ~ "ex-smoker",
+                                      cur_smk==1 ~ "current smoker",
+                                      ex_smk==0 & cur_smk==0 ~ "non-smoker"))
+
+ctt$smk <- as.factor(ctt$smk)
+ctt$smk <- relevel(ctt$smk, ref = "non-smoker")
+
+ctt <- ctt %>% mutate(dm_0_10_plus = case_when(dm_0_10==1 ~ "diabetes <=10 years",
+                                      dm_10_plus==1 ~ "diabetes >10 years",
+                                      dm_0_10==0 & dm_10_plus==0 ~ "no diabetes"))
+
+ctt$dm_0_10_plus <- as.factor(ctt$dm_0_10_plus)
+ctt$dm_0_10_plus <- relevel(ctt$dm_0_10_plus, ref = "no diabetes")
+
+# code to factor for other categorical variable for imputation ---------------
+
+ctt$year <- as.factor(ctt$year)
+ctt$trtbp <- as.factor(ctt$trtbp)
+ctt$mi_0_1 <- as.factor(ctt$mi_0_1)
+ctt$mi_1_plus <- as.factor(ctt$mi_1_plus)
+ctt$stroke_0_1 <- as.factor(ctt$stroke_0_1)
+ctt$stroke_1_plus <- as.factor(ctt$stroke_1_plus)
+ctt$crv_0_1 <- as.factor(ctt$crv_0_1)
+ctt$crv_1_plus <- as.factor(ctt$crv_1_plus)
+ctt$angina <- as.factor(ctt$angina)
+ctt$edu <- as.factor(ctt$edu)
+ctt$marital <- as.factor(ctt$marital)
+ctt$mental <- as.factor(ctt$mental)
+ctt$cancer <- as.factor(ctt$cancer)
+ctt$othcvd <- as.factor(ctt$othcvd)
+ctt$mobility <- as.factor(ctt$mobility)
+ctt$selfcare <- as.factor(ctt$selfcare)
+ctt$usualact <- as.factor(ctt$usualact)
+ctt$pain <- as.factor(ctt$pain)
+ctt$anxiety <- as.factor(ctt$anxiety)
+
+# save --------------------------------------------------------------------
+saveRDS(ctt, file = "D:/eq5d/data/ctt.rds", compress = F)
 
