@@ -1,0 +1,550 @@
+---
+title: "qol_model_h17 and h03040611"
+author: "RW"
+date: "09/11/2021"
+output: html_document
+---
+
+```{r}
+library(mice)
+library(miceadds)
+library(tidyverse)
+```
+
+```{r}
+implist17 <- readRDS("D:/eq5d/data/h17_implist_rev.rds")
+
+implist03040611 <- readRDS("D:/eq5d/data/h03040611_implist_rev.rds")
+```
+
+
+```{r}
+#extract 2011
+implist11 <- implist03040611
+
+for (i in 1:20) {
+  implist11[[i]] <- subset(implist11[[i]], year=="2011")
+  implist11[[i]]$year <- NULL
+}
+
+```
+
+
+```{r}
+# combine 11 and 17
+implist1117 <- implist11 
+
+for (i in 1:20) {
+  implist1117[[i]] <- rbind(implist1117[[i]], implist17[[i]])
+}
+
+```
+
+```{r}
+#extract 2006 2011
+implist0611 <- implist03040611
+
+for (i in 1:20) {
+  implist0611[[i]] <- subset(implist0611[[i]], year %in% c("2006", "2011"))
+  implist0611[[i]]$year <- NULL
+}
+
+```
+
+```{r}
+# combine 06 11 and 17
+implist061117 <- implist0611 
+
+for (i in 1:20) {
+  implist061117[[i]] <- rbind(implist061117[[i]], implist17[[i]])
+}
+
+```
+
+
+```{r}
+expo <- function(fit_pool){
+  coef <- round(fit_pool$estimate, digits = 2)
+  CI <- paste(round(fit_pool$`2.5 %`, digits = 2), round(fit_pool$`97.5 %`, digits = 2), sep=" , ")
+  CI <- paste("(", CI, ")", sep = "")
+  coef <- paste(coef, CI, sep=" ")
+  
+  expo <- data.frame(var = fit_pool$term, b=coef)
+  write.csv(expo, file=paste0("D:/eq5d/output/", deparse(substitute(fit_pool)), ".csv"))
+  return(expo)
+}
+
+```
+
+
+```{r}
+# 2017
+fit <- with(implist17, exp = lm(eq5d_index ~ age5 + male + ethn + imd + bmi_cat + smk + trtbp + mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h17_age_cat <- summary(pool(fit), conf.int = T)
+
+expo(fit_h17_age_cat)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2
+```
+
+
+```{r}
+#2017
+fit <- with(implist17, exp = lm(eq5d_index ~ CurrAge_cent + male + ethn + imd + bmi_cat + smk + trtbp + mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h17_age_linear <- summary(pool(fit), conf.int = T)
+
+expo(fit_h17_age_linear)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2
+```
+
+
+```{r}
+#2011
+fit <- with(implist11, exp = lm(eq5d_index ~ CurrAge_cent + male + ethn + imd + bmi_cat + smk + trtbp + mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h11_age_linear <- summary(pool(fit), conf.int = T)
+
+expo(fit_h11_age_linear)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2
+```
+
+
+```{r}
+#2011 2017
+fit <- with(implist1117, exp = lm(eq5d_index ~ CurrAge_cent + male + ethn + imd + bmi_cat + smk + trtbp + mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h1117_age_linear <- summary(pool(fit), conf.int = T)
+
+expo(fit_h1117_age_linear)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2
+```
+
+
+```{r}
+#03 04 06 11
+fit <- with(implist03040611, exp = lm(eq5d_index ~ CurrAge_cent + male + ethn + imd + bmi_cat + smk + trtbp + mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h03040611_age_linear <- summary(pool(fit), conf.int = T)
+
+expo(fit_h03040611_age_linear)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2; fit_h03040611_age_linear
+```
+
+
+```{r}
+# final choice
+#2006 2011 2017
+fit <- with(implist061117, exp = lm(eq5d_index ~ CurrAge_cent + male + ethn + imd + bmi_cat + smk + trtbp + mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h061117_age_linear <- summary(pool(fit), conf.int = T)
+
+# expo(fit_h061117_age_linear)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2
+```
+
+# plot model prediction and observation graph
+
+
+```{r}
+# spline against 5-year means of observations
+# 5 year interval
+library(gmodels) # calculate confidence interval
+library(ggplot2)
+
+data <- implist061117[[1]][, c("age", "age5", "CurrAge_cent", "xdif70")]
+
+for (i in 1:20) {
+
+  implist061117[[i]]$dif70 <- implist061117[[i]]$CurrAge_cent-1
+  implist061117[[i]]$over70 <- ifelse(implist061117[[i]]$CurrAge_cent>=1, 1, 0)
+  implist061117[[i]]$xdif70 <- implist061117[[i]]$dif70*implist061117[[i]]$over70
+  
+  dt <- implist061117[[i]]
+
+  fit <- lm(eq5d_index ~ CurrAge_cent + xdif70 + male + ethn + imd + bmi_cat + smk + trtbp + mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1, data = dt)
+  
+  pred <- predict(fit, dt)
+
+  data[[paste0("pred_",i)]] <- pred
+  
+  data[[paste0("eq5d_",i)]] <- dt$eq5d_index
+  
+}
+
+data$eq5d_index <- rowMeans(data[, grepl("eq5d_", colnames(data))])
+
+data$pred_eq5d <- rowMeans(data[, grepl("pred_", colnames(data))])
+
+
+data <- data[order(data$age), ]
+
+fit2 <- lm(eq5d_index ~ CurrAge_cent + xdif70, data=data)
+
+
+# use average eq5d index for each age year as the observed dot
+# use spline 1 knot
+# 5-year age band
+agem <- data %>%
+  group_by(age5) %>%
+  summarise(QoL=ci(eq5d_index)[1],
+            lowCI=ci(eq5d_index)[2],
+            hiCI=ci(eq5d_index)[3])
+agem <- as.data.frame(agem)
+agem <- agem %>% mutate(age=case_when(age5=="30-34" ~ 32,
+                                      age5=="35-39" ~ 37,
+                                      age5=="40-44" ~ 42,
+                                      age5=="45-49" ~ 47,
+                                      age5=="50-54" ~ 52,
+                                      age5=="55-59" ~ 57,
+                                      age5=="60-64" ~ 62,
+                                      age5=="65-69" ~ 67,
+                                      age5=="70-74" ~ 72,
+                                      age5=="75-79" ~ 77,
+                                      age5=="80-84" ~ 82,
+                                      age5=="85-89" ~ 87,
+                                      age5=="90+" ~ 92
+                                      ))
+
+age_pred <- data %>%
+  group_by(age5) %>%
+  summarise(QoL=ci(pred_eq5d)[1],
+            lowCI2=ci(pred_eq5d)[2],
+            hiCI2=ci(pred_eq5d)[3])
+age_pred <- as.data.frame(age_pred)
+age_pred <- age_pred %>% mutate(age=case_when(age5=="30-34" ~ 32,
+                                      age5=="35-39" ~ 37,
+                                      age5=="40-44" ~ 42,
+                                      age5=="45-49" ~ 47,
+                                      age5=="50-54" ~ 52,
+                                      age5=="55-59" ~ 57,
+                                      age5=="60-64" ~ 62,
+                                      age5=="65-69" ~ 67,
+                                      age5=="70-74" ~ 72,
+                                      age5=="75-79" ~ 77,
+                                      age5=="80-84" ~ 82,
+                                      age5=="85-89" ~ 87,
+                                      age5=="90+" ~ 92
+                                      ))
+
+
+x <- ggplot(agem, aes(x=age, y=QoL)) +
+  geom_point(size = 2)+
+  geom_errorbar(aes(ymax=hiCI, ymin=lowCI), width=1.8)+
+  geom_line(color='red', data=age_pred, aes(x=age, y=QoL), size=1)+
+  geom_errorbar(aes(ymax=hiCI2, ymin=lowCI2), data = age_pred, color="red", width=0.9)+
+  geom_line(color='blue', data=data, aes(x=age, y=predict(fit2)), linetype="dashed")+
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks = seq(30, 105, by=5))+
+  scale_y_continuous(limits = c(0.5,1), minor_breaks = seq(0.5 , 1, 0.05), breaks = seq(0.5, 1, 0.1))+
+  theme(axis.text=element_text(size=15),axis.title=element_text(size=18))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.5))
+
+ggsave(x, filename = "D:/eq5d/output/spl_5yObs_211212.png")
+
+# individual age
+agem <- data %>%
+  group_by(age) %>%
+  summarise(QoL=ci(eq5d_index)[1],
+            lowCI=ci(eq5d_index)[2],
+            hiCI=ci(eq5d_index)[3])
+
+agem <- as.data.frame(agem)
+
+age_pred <- data %>%
+  group_by(age) %>%
+  summarise(QoL=ci(pred_eq5d)[1],
+            lowCI=ci(pred_eq5d)[2],
+            hiCI=ci(pred_eq5d)[3])
+age_pred <- as.data.frame(age_pred)
+
+x <- ggplot(agem, aes(x=age, y=QoL)) +
+  geom_point(size = 1)+
+  geom_errorbar(aes(ymax=hiCI, ymin=lowCI))+
+  geom_line(color='red', data=age_pred, aes(x=age, y=QoL))+
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks = seq(30, 105, by=5))+
+  scale_y_continuous(limits = c(0,1), minor_breaks = seq(0 , 1, 0.05), breaks = seq(0, 1, 0.1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.5))
+
+ggsave(x, filename = "D:/eq5d/output/spl_1_211212.png")
+
+```
+
+
+
+```{r}
+# spline against 5-year means of observations
+# 5 year interval
+library(gmodels) # calculate confidence interval
+library(ggplot2)
+
+for (i in 1:20) {
+  implist061117[[i]]$dif70 <- implist061117[[i]]$CurrAge_cent-1
+  implist061117[[i]]$over70 <- ifelse(implist061117[[i]]$CurrAge_cent>=1, 1, 0)
+  implist061117[[i]]$xdif70 <- implist061117[[i]]$dif70*implist061117[[i]]$over70
+}
+
+data <- implist061117[[1]][, c("age", "age5", "CurrAge_cent", "xdif70")]
+
+for(i in 1:20){
+  
+  data[[paste0("eq5d_",i)]] <- implist061117[[i]]$eq5d_index
+  
+}
+
+data$eq5d_index <- rowMeans(data[, grepl("eq5d_", colnames(data))])
+
+data <- data[order(data$age), ]
+
+
+# use average eq5d index for each age year as the observed dot
+# use spline 1 knot
+
+fit <- lm(eq5d_index ~ CurrAge_cent + xdif70, data=data)
+
+agem <- data %>%
+  group_by(age5) %>%
+  summarise(EQ5D=ci(eq5d_index)[1],
+            lowCI=ci(eq5d_index)[2],
+            hiCI=ci(eq5d_index)[3])
+agem <- as.data.frame(agem)
+agem <- agem %>% mutate(age=case_when(age5=="30-34" ~ 32,
+                                      age5=="35-39" ~ 37,
+                                      age5=="40-44" ~ 42,
+                                      age5=="45-49" ~ 47,
+                                      age5=="50-54" ~ 52,
+                                      age5=="55-59" ~ 57,
+                                      age5=="60-64" ~ 62,
+                                      age5=="65-69" ~ 67,
+                                      age5=="70-74" ~ 72,
+                                      age5=="75-79" ~ 77,
+                                      age5=="80-84" ~ 82,
+                                      age5=="85-89" ~ 87,
+                                      age5=="90+" ~ 92
+                                      ))
+
+
+x <- ggplot(agem, aes(x=age, y=EQ5D)) +
+  geom_point(size = 1)+
+  geom_errorbar(aes(ymax=hiCI, ymin=lowCI))+
+  geom_line(color='red', data=data, aes(x=age, y=predict(fit)))+
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks = seq(30, 105, by=5))+
+  scale_y_continuous(limits = c(0.5,1), minor_breaks = seq(0.5 , 1, 0.05), breaks = seq(0.5, 1, 0.1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.5))
+
+ggsave(x, filename = "D:/eq5d/output/spl_5yObs_211211.png")
+
+```
+
+
+```{r}
+data <- implist061117[[1]][order(implist061117[[1]]$CurrAge_cent), ]
+
+# 5 year interval
+library(gmodels) # calculate confidence interval
+library(ggplot2)
+
+fit <- lm(eq5d_index ~ age5, data = data)
+
+agem <- data %>%
+  group_by(age) %>%
+  summarise(EQ5D=ci(eq5d_index)[1],
+            lowCI=ci(eq5d_index)[2],
+            hiCI=ci(eq5d_index)[3])
+
+
+agem <- as.data.frame(agem)
+
+x <- ggplot(agem, aes(x=age, y=EQ5D)) +
+  geom_point(size = 1)+
+  geom_errorbar(aes(ymax=hiCI, ymin=lowCI))+
+  geom_line(color='red', data=data, aes(x=age, y=predict(fit)))+
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks = seq(30, 105, by=5))+
+  scale_y_continuous(limits = c(-0.5,1))
+
+ggsave(x, filename = "D:/eq5d/output/5_y_intv_211110.png")
+```
+
+```{r}
+# linear
+
+fit <- lm(eq5d_index ~ CurrAge_cent, data = data)
+
+# agem <- data %>% 
+#   group_by(age) %>% 
+#   summarise(EQ5D=ci(eq5d_index)[1], 
+#             lowCI=ci(eq5d_index)[2],
+#             hiCI=ci(eq5d_index)[3]) 
+#   
+# 
+# agem <- as.data.frame(agem)
+
+x <- ggplot(agem, aes(x=age, y=EQ5D)) +
+  geom_point(size = 1)+
+  geom_errorbar(aes(ymax=hiCI, ymin=lowCI))+
+  geom_line(color='red', data=data, aes(x=age, y=predict(fit)))+
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks = seq(30, 105, by=5))+
+  scale_y_continuous(limits = c(-0.5,1))
+
+ggsave(x, filename = "D:/eq5d/output/linear_211110.png")
+```
+```{r}
+for (i in 1:20) {
+  implist061117[[i]]$dif70 <- implist061117[[i]]$CurrAge_cent-1
+  implist061117[[i]]$over70 <- ifelse(implist061117[[i]]$CurrAge_cent>=1, 1, 0)
+  implist061117[[i]]$xdif70 <- implist061117[[i]]$dif70*implist061117[[i]]$over70
+}
+```
+
+
+```{r}
+# use average eq5d index for each age year as the observed dot
+# use spline 1 knot
+
+fit <- lm(eq5d_index ~ CurrAge_cent + xdif70, data=data)
+
+agem <- data %>%
+  group_by(age) %>%
+  summarise(EQ5D=ci(eq5d_index)[1],
+            lowCI=ci(eq5d_index)[2],
+            hiCI=ci(eq5d_index)[3])
+
+agem <- as.data.frame(agem)
+
+x <- ggplot(agem, aes(x=age, y=EQ5D)) +
+  geom_point(size = 1)+
+  geom_errorbar(aes(ymax=hiCI, ymin=lowCI))+
+  geom_line(color='red', data=data, aes(x=age, y=predict(fit)))+
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks = seq(30, 105, by=5))+
+  scale_y_continuous(limits = c(0,1), minor_breaks = seq(0 , 1, 0.05), breaks = seq(0, 1, 0.1))+
+  theme(panel.grid.minor = element_line(colour="grey", size=0.5))
+
+ggsave(x, filename = "D:/eq5d/output/spl_1_211211.png")
+```
+# so finally
+
+```{r}
+# the same as above
+library(lspline)
+
+fit <- with(implist061117, exp = lm(eq5d_index ~ lspline(CurrAge_cent, 1, marginal = F) + male + ethn + imd + bmi_cat + smk + trtbp +mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h061117_age_spline1 <- summary(pool(fit), conf.int = T)
+
+expo(fit_h061117_age_spline1)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2
+
+fit_h061117_age_spline1
+```
+
+```{r}
+# try other year combinations
+library(lspline)
+
+fit <- with(implist17, exp = lm(eq5d_index ~ lspline(CurrAge_cent, 1, marginal = F) + male + ethn + imd + bmi_cat + smk + trtbp +mental + cancer + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_age_spline1 <- summary(pool(fit), conf.int = T)
+
+# expo(fit_h03040611_age_spline1)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$adj.r.squared))
+R2
+
+fit_age_spline1
+```
+
+# check age*cancer
+
+```{r}
+# the same as above
+library(lspline)
+
+fit <- with(implist061117, exp = lm(eq5d_index ~ lspline(CurrAge_cent, 1, marginal = F)*cancer + male + ethn + imd + bmi_cat + smk + trtbp +mental + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h061117_age_spline1_canInt <- summary(pool(fit), conf.int = T)
+
+expo(fit_h061117_age_spline1_canInt)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2
+
+fit_h061117_age_spline1_canInt
+```
+
+```{r}
+# the same as above
+library(lspline)
+
+fit <- with(implist061117, exp = lm(eq5d_index ~ lspline(CurrAge_cent, 1, marginal = F) + male + ethn + imd + bmi_cat + smk + trtbp +mental + dm_0_10_inf + cvd_hist + crv_1_inf + mi_0_1 + stroke_0_1 + crv_0_1))
+
+fit_h061117_age_spline1_noCan <- summary(pool(fit), conf.int = T)
+
+expo(fit_h061117_age_spline1_noCan)
+
+R2 <- mean(sapply(1:length(fit), function(x) summary(fit[[x]])$r.squared))
+R2
+
+fit_h061117_age_spline1_noCan
+```
+
+
+1.	Report QoL (SE) in categories of people in HSE, correspond to UKB by PP/SP and age
+```{r}
+data <- implist061117[[1]]
+
+pp <- data %>% filter(cvd_hist=="None") %>% group_by(age5) %>% summarise(ppcount=n(),ppmean=mean(eq5d_index), ppsd=sd(eq5d_index))
+
+sp <- data %>% filter(cvd_hist!="None") %>% group_by(age5) %>% summarise(spcount=n(),spmean=mean(eq5d_index), spsd=sd(eq5d_index))
+
+expo <- cbind(pp[, 1], pp[,2], round(pp[, 3:4], 2), sp[,2], round(sp[, 3:4], 2))
+
+write.csv(expo, "qol_byppsp_age.csv")
+```
+
+
+check character of people w/wo cancer
+```{r}
+data <- implist061117[[1]]
+
+data$pain <- as.numeric(data$pain)
+data$anxiety <- as.numeric(data$anxiety)
+data$mobility <- as.numeric(data$mobility)
+data$selfcare <- as.numeric(data$selfcare)
+data$usualact <- as.numeric(data$usualact)
+
+data %>% group_by(cancer) %>% summarise(mean(age), mean(eq5d_index))
+```
+
+
+```{r}
+data %>% group_by(mi_1_inf==1 | mi_0_1==1) %>% summarise(mean(age), mean(eq5d_index))
+```
+
+```{r}
+data %>% group_by(dm_0_10_inf!="no diabetes") %>% summarise(mean(age), mean(eq5d_index))
+```
+
+
+```{r}
+data %>% group_by(stroke_1_inf==1 | stroke_0_1==1) %>% summarise(mean(age), mean(eq5d_index))
+```
+
